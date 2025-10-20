@@ -16,7 +16,7 @@ if(RS256) {
         privateKey = fs.readFileSync(path.resolve(process.env.JWT_PRIVATE_KEY_PATH as string));
         publicKey = fs.readFileSync(path.resolve(process.env.JWT_PUBLIC_KEY_PATH as string));
     } catch(error) {
-        logger.error("Keys not available, falling back to secrets");
+        logger.error("❌ Keys not available, falling back to secrets");
     }
 }
 

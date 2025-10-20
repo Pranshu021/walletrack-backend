@@ -11,14 +11,14 @@ export function errorHandler(
   console.error(err);
 
   if (err instanceof CustomError) {
-    logger.error(`[${req.method}] ${req.url} -> ${err.message}`);
+    logger.error(`❌ [${req.method}] ${req.url} -> ${err.message}`);
     return res.status(err.statusCode).json({
       success: false,
       error: err.message,
     });
   }
 
-  logger.error(`[${req.method}] ${req.url} -> ${err.stack || err.message}`);
+  logger.error(`❌ [${req.method}] ${req.url} -> ${err.stack || err.message}`);
 
   // fallback for unknown errors
   res.status(500).json({

@@ -1,7 +1,5 @@
-import { connectMongoDB } from "../config/mongo";
-import { DatabaseError } from "../errors";
+import { IUser } from "../interfaces/types_and_interfaces";
 import UserModel from "../models/userModel";
-import logger from "../utils/logger";
 import * as bcrypt from 'bcrypt';
 
 const fetchUser = async(all: boolean = false, searchParams: object) => {
@@ -26,34 +24,63 @@ const fetchUser = async(all: boolean = false, searchParams: object) => {
     }
 }
 
-const createUser = async(username: string, email: string, password: string) => {
-    try {
-        const existingUser = await UserModel.findOne({email});
-        if(existingUser) {
-            const err = new Error(`DuplicateUserError: User already exists with this email`);
-            throw err;
+const createUser = async(user: IUser) => {
+    if(user.authProvider === "google") {
+        try {
+            const newUser = new UserModel({
+                username: user.username,
+                email: user.email,
+                password: null,
+                role: 'user',
+                isActive: true,
+                last_login: null,
+                authProvider: 'google',
+                picture: user.picture,
+                authId: user.authId,
+                currency: user.currency
+            });
+            const savedUser = await newUser.save();
+            return  {
+                response: savedUser,
+                responseCode: 0,
+                error: null
+            }
+        } catch(error) {
+            throw error;
         }
-        const saltRounds = 12;
-        const salt = await bcrypt.genSalt(saltRounds);
-        const hashedPassword = await bcrypt.hash(password, salt);
-        const newUser = new UserModel({
-            username: username,
-            email: email,
-            password: hashedPassword,
-            role: 'user',
-            isActive: true,
-            last_login: null
-        });
-    
-        const savedUser = await newUser.save();
-        return  {
-            response: savedUser,
-            responseCode: 0,
-            error: null
-        }
-    } catch(error) {
-        throw error;
-    }    
+    } else {
+        try {
+            const existingUser = await UserModel.findOne({email: user.email});
+            if(existingUser) {
+                const err = new Error(`DuplicateUserError: User already exists with this email`);
+                throw err;
+            }
+            const saltRounds = 12;
+            const salt = await bcrypt.genSalt(saltRounds);
+            const hashedPassword = await bcrypt.hash(user.password || "", salt);
+            const newUser = new UserModel({
+                username: user.username,
+                email: user.email,
+                password: hashedPassword,
+                role: 'user',
+                isActive: true,
+                last_login: null,
+                authProvider: 'walletrack',
+                picture: null,
+                authId: null,
+                currency: user.currency
+            });
+        
+            const savedUser = await newUser.save();
+            return  {
+                response: savedUser,
+                responseCode: 0,
+                error: null
+            }
+        } catch(error) {
+            throw error;
+        }    
+    }
 };
 
 const deleteUser = async(id: string) => {

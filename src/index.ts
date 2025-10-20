@@ -6,6 +6,7 @@ import cors from "cors";
 import bodyParser  from "body-parser";
 import userRoutes from "./routes/userRoutes";
 import authRoutes from "./routes/authRoutes";
+import transactionRoutes from "./routes/transactionRoutes";
 import { v4 as uuidv4 } from 'uuid';
 import { errorHandler } from "./middlewares/errorHandler";
 import { requestLogger } from "./middlewares/requestLogger";
@@ -33,6 +34,7 @@ const startServer = async() => {
 
     app.use("/api/users", userRoutes);
     app.use("/api/auth", authRoutes);
+    app.use("/api/transactions", transactionRoutes);
 
     const PORT = process.env.PORT || 3001;
     // app.listen(PORT, async() => {

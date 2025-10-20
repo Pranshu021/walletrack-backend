@@ -2,8 +2,11 @@ import { Request, Response, NextFunction } from "express";
 import logger from "../utils/logger";
 import { ValidationError, AuthenticationError, DatabaseError } from "../errors";
 import UserModel from "../models/userModel";
+import userServices from "../services/userServices";
 import { signAccessToken, verifyAccessToken, signRefreshToken, verifyRefreshToken } from "../utils/jwt";
 import sessionTokensModel, { IRefreshToken } from "../models/sessionTokensModel";
+import { OAuth2Client } from "google-auth-library";
+import { v4 as uuidv4 } from 'uuid';
 import bcrypt from "bcrypt";
 import dotenv from "dotenv"
 
@@ -17,11 +20,12 @@ export const login = async(req: Request, res: Response, next: NextFunction) => {
         if(!username || !email || !password) return next(new ValidationError("Username, Email and Passowrd required"));
         
         const user = await UserModel.findOne({ username });
+        
         if(!user) return next(new ValidationError("Invalid Credentials"))
         
-        const matchPassword = await bcrypt.compare(password, user.password);
+        const matchPassword = await bcrypt.compare(password, user.password || "");
         if(!matchPassword) return next(new ValidationError("Invalid Credentials"))
-        
+
         const accessToken = signAccessToken({userId: user._id.toString(), role: user.role});
         const refreshToken = signRefreshToken({ userId: user._id.toString() });
 
@@ -46,7 +50,7 @@ export const login = async(req: Request, res: Response, next: NextFunction) => {
 
         res.json({ success: true, accessToken })
     } catch(error) {
-        logger.error("Login error: ", error);
+        logger.error("❌ Login error: ", error);
         next(new DatabaseError("Login Failed"));
     }
 }
@@ -103,7 +107,7 @@ export const refreshToken = async(req: Request, res: Response, next: NextFunctio
       
         res.status(201).json({ success: true, accessToken });
     } catch(error) {
-        logger.error("Refresh error: " + (error as Error).message);
+        logger.error("❌ Refresh error: " + (error as Error).message);
         next(error);
     }
 }
@@ -122,7 +126,75 @@ export const logout = async(req: Request, res: Response, next: NextFunction) => 
         res.clearCookie(REFRESH_TOKEN_COOKIE, { path: "/" });
         res.json({ message: "success", data: "Logged Out" });
     } catch(error) {
-        logger.error("Logout error: ", (error as Error).message);
+        logger.error("❌ Logout error: ", (error as Error).message);
+        return next(error);
+    }
+}
+
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+export const googleLoginController = async(req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { id_token } = req.body;
+        if(!id_token) return res.status(401).json({ error: "Missing Token" });
+
+        const ticket = await client.verifyIdToken({
+            idToken: id_token,
+            audience: process.env.GOOGLE_CLIENT_ID
+        });
+
+        const payload = ticket.getPayload();
+
+        if(!payload) return res.status(400).json({ error: "Invalid token" });
+
+        const { email, name, picture, sub: googleId } = payload;
+        
+        console.log("Payload: ", payload)
+        let user; 
+        user = await UserModel.findOne({ email });
+        if(!user) {
+            user = await UserModel.create({
+                username: name,
+                email: email,
+                role: 'user',
+                isActive: true,
+                authProvider: 'google',
+                picture: picture,
+                authId: googleId,
+                currency: "INR"
+            });
+        }
+
+        const accessToken = signAccessToken({userId: user._id, role: user.role});
+        const refreshToken = signRefreshToken({userId: user._id})
+
+        const expires = new Date();
+        expires.setDate(expires.getDate() + 30);
+
+        await sessionTokensModel.create({
+            token: refreshToken,
+            user: user._id,
+            expires,
+            createdByIp: req.ip
+        })
+        
+        res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            domain: process.env.COOKIE_DOMAIN,
+            path: "/",
+            maxAge: 1000 * 60 * 60 * 24 * 30
+          });
+
+        res.status(201).json({success: "true", accessToken: accessToken, user: {
+            name: user.username,
+            email: user.email,
+            profileImage: user.picture
+          }})
+
+    } catch(error) {
+        logger.error("❌ Login error: ", (error as Error).message);
         return next(error);
     }
 }
